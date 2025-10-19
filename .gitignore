@@ -7,7 +7,7 @@
 venv/
 .venv/
 env/
-*.env
+*.env.practice
 
 # Secrets (Rất quan trọng!)
 # KHÔNG BAO GIỜ commit file .env chứa API keys
