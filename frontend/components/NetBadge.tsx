@@ -1,68 +1,57 @@
 "use client";
-
 import React from "react";
-import { Cloud, Server, WifiOff, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Radio, ShieldAlert } from "lucide-react";
 import { useConnectivity } from "@/lib/net";
 
-function NetBadgeInner() {
-  const { status } = useConnectivity(); // "cloud" | "edge" | "offline" | "connecting"
+export type NetBadgeProps = {
+  className?: string;
+};
 
-  const view =
-    {
-      cloud: {
-        label: "Online",
-        sub: "Cloud",
-        icon: <Cloud size={14} />,
-        ring: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        dot: "bg-emerald-500",
-      },
-      edge: {
-        label: "Online",
-        sub: "Edge",
-        icon: <Server size={14} />,
-        ring: "bg-blue-50 text-blue-700 border-blue-200",
-        dot: "bg-blue-500",
-      },
-      offline: {
-        label: "Offline",
-        sub: "Queued",
-        icon: <WifiOff size={14} />,
-        ring: "bg-slate-100 text-slate-600 border-slate-200",
-        dot: "bg-slate-400",
-      },
-      connecting: {
-        label: "Connecting…",
-        sub: "",
-        icon: <Loader2 size={14} className="animate-spin" />,
-        ring: "bg-amber-50 text-amber-700 border-amber-200",
-        dot: "bg-amber-400",
-      },
-    }[status ?? "connecting"];
+export function NetBadge({ className = "" }: NetBadgeProps) {
+  const { status, cloudUrl, edgeUrl, reason } = useConnectivity();
+
+  if (status === "online") {
+    return (
+      <span
+        title={`Cloud: ${cloudUrl}`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 ${className}`}
+      >
+        <Wifi size={14} /> Online
+      </span>
+    );
+  }
+
+  if (status === "edge") {
+    return (
+      <span
+        title={`Edge: ${edgeUrl}`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold bg-sky-100 text-sky-700 border border-sky-200 ${className}`}
+      >
+        <Radio size={14} /> Edge (Local)
+      </span>
+    );
+  }
+
+  if (status === "blocked") {
+    return (
+      <span
+        title={reason || "Mixed content is blocked on HTTPS pages. Provide an HTTPS EDGE URL or run the frontend locally."}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 ${className}`}
+      >
+        <ShieldAlert size={14} /> Edge Blocked
+      </span>
+    );
+  }
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${view.ring}`}
-      title={
-        status === "cloud"
-          ? "Connected to Cloud"
-          : status === "edge"
-          ? "Connected to Edge Gateway"
-          : status === "offline"
-          ? "Offline: requests will be queued"
-          : "Checking connectivity…"
-      }
+      title="No connectivity. Messages will be queued."
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200 ${className}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${view.dot}`} />
-      {view.icon}
-      <span className="font-medium">{view.label}</span>
-      {view.sub && <span className="opacity-75">({view.sub})</span>}
+      <WifiOff size={14} /> Offline (Queued)
     </span>
   );
 }
 
-export default function NetBadge() {
-  return <NetBadgeInner />;
-}
-
-// Also provide a named export so either import style works:
-export { NetBadge as NetBadge };
+// both default and named export to satisfy any import styles
+export default NetBadge;
