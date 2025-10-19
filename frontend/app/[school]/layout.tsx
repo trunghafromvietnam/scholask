@@ -28,7 +28,6 @@ function StudentLayoutContent({ params, children }: { params: { school: string }
     setIsClient(true);
   }, []);
 
-  // Update auth state on mount and on custom auth event
   useEffect(() => {
     if (!isClient) return; // Run only client-side
 

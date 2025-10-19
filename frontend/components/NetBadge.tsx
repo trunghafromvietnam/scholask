@@ -1,97 +1,68 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+"use client";
 
-type Status = "cloud" | "edge" | "offline";
+import React from "react";
+import { Cloud, Server, WifiOff, Loader2 } from "lucide-react";
+import { useConnectivity } from "@/lib/net";
 
-const CLOUD_URL = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") || "";
-const EDGE_URL  = process.env.NEXT_PUBLIC_EDGE_URL?.replace(/\/+$/, "") || ""; // dùng khi có Pi
+function NetBadgeInner() {
+  const { status } = useConnectivity(); // "cloud" | "edge" | "offline" | "connecting"
 
-export async function ping(url: string, msAbort = 2500): Promise<number> {
-  const ctrl = new AbortController();
-  const t = Date.now();
-  const timer = setTimeout(() => ctrl.abort(), msAbort);
-  try {
-    const res = await fetch(`${url}/health?nc=${Date.now()}`, {
-      method: "GET",
-      mode: "cors",
-      credentials: "omit",
-      signal: ctrl.signal,
-      headers: { "Accept": "application/json" },
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return Date.now() - t;
-  } catch {
-    clearTimeout(timer);
-    throw new Error("ping failed");
-  }
+  const view =
+    {
+      cloud: {
+        label: "Online",
+        sub: "Cloud",
+        icon: <Cloud size={14} />,
+        ring: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        dot: "bg-emerald-500",
+      },
+      edge: {
+        label: "Online",
+        sub: "Edge",
+        icon: <Server size={14} />,
+        ring: "bg-blue-50 text-blue-700 border-blue-200",
+        dot: "bg-blue-500",
+      },
+      offline: {
+        label: "Offline",
+        sub: "Queued",
+        icon: <WifiOff size={14} />,
+        ring: "bg-slate-100 text-slate-600 border-slate-200",
+        dot: "bg-slate-400",
+      },
+      connecting: {
+        label: "Connecting…",
+        sub: "",
+        icon: <Loader2 size={14} className="animate-spin" />,
+        ring: "bg-amber-50 text-amber-700 border-amber-200",
+        dot: "bg-amber-400",
+      },
+    }[status ?? "connecting"];
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${view.ring}`}
+      title={
+        status === "cloud"
+          ? "Connected to Cloud"
+          : status === "edge"
+          ? "Connected to Edge Gateway"
+          : status === "offline"
+          ? "Offline: requests will be queued"
+          : "Checking connectivity…"
+      }
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${view.dot}`} />
+      {view.icon}
+      <span className="font-medium">{view.label}</span>
+      {view.sub && <span className="opacity-75">({view.sub})</span>}
+    </span>
+  );
 }
 
-export function useConnectivity() {
-  const [status, setStatus] = useState<Status>("offline");
-  const [cloudMs, setCloudMs] = useState<number | null>(null);
-  const [edgeMs, setEdgeMs] = useState<number | null>(null);
-  const baseUrlRef = useRef<string>("");
-
-  // simple in-memory queue
-  const qRef = useRef<{ key: string; items: any[] }>({ key: "default", items: [] });
-
-  const setQueueKey = useCallback((k: string) => {
-    qRef.current.key = k;
-  }, []);
-
-  const enqueue = useCallback((item: any) => {
-    qRef.current.items.push(item);
-  }, []);
-
-  const readQueue = useCallback(() => [...qRef.current.items], []);
-  const clearQueue = useCallback(() => { qRef.current.items = []; }, []);
-
-  // Decide status by pinging cloud first, then edge
-  const check = useCallback(async () => {
-    // 1) Try cloud
-    if (CLOUD_URL) {
-      try {
-        const ms = await ping(CLOUD_URL, 2500);
-        setCloudMs(ms);
-        setStatus("cloud");
-        baseUrlRef.current = CLOUD_URL;
-        return;
-      } catch {/* fallthrough */}
-    }
-    // 2) Try edge (Pi)
-    if (EDGE_URL) {
-      try {
-        const ms = await ping(EDGE_URL, 1500);
-        setEdgeMs(ms);
-        setStatus("edge");
-        baseUrlRef.current = EDGE_URL;
-        return;
-      } catch {/* fallthrough */}
-    }
-    // 3) Offline
-    setStatus("offline");
-    baseUrlRef.current = "";
-  }, []);
-
-  useEffect(() => {
-    check(); // initial
-    const onOnline = () => check();
-    const onOffline = () => setStatus("offline");
-
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-
-    const t = setInterval(check, 5000); 
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-      clearInterval(t);
-    };
-  }, [check]);
-
-  const canSend = status === "cloud" || status === "edge";
-  return {
-    status, cloudMs, edgeMs, baseUrl: baseUrlRef.current, canSend,
-    enqueue, readQueue, clearQueue, setQueueKey,
-  };
+export default function NetBadge() {
+  return <NetBadgeInner />;
 }
+
+// Also provide a named export so either import style works:
+export { NetBadge as NetBadge };

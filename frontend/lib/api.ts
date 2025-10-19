@@ -156,33 +156,26 @@ export async function submitForm(
 /**
  * Sends a question to the RAG backend (/chat/ask).
  */
-export async function ask(school: string, question: string): Promise<{ answer: string; sources: any[] }> {
-  try {
-     // apiFetch đã parse JSON
-    const responseJson = await apiFetch(`/chat/ask`, {
-      method: "POST",
-      body: JSON.stringify({
-        school: school,
-        question: question,
-      }),
-    });
-    
-    // Kiểm tra cấu trúc response
-    if (typeof responseJson?.answer === 'string' && Array.isArray(responseJson?.sources)) {
-      return responseJson as { answer: string; sources: any[] };
-    } else {
-      console.error("Invalid response structure from /chat/ask:", responseJson);
-      throw new Error("Received invalid data from chat API.");
-    }
-
-  } catch (error) {
-    console.error("Chat API error:", error);
-    // Trả về lỗi thân thiện
-    return {
-      answer: "Sorry, I'm having trouble connecting to the AI advisor. Please try again later.",
-      sources: []
-    };
+export async function ask(
+  school: string,
+  question: string,
+  opts: { baseUrl?: string } = {}
+) {
+  const base = opts.baseUrl || process.env.NEXT_PUBLIC_BACKEND_URL!;
+  const res = await fetch(`${base}/chat/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ school, question }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`ask() failed: ${res.status} ${t}`);
   }
+  const data = await res.json();
+  if (!data || typeof data.answer !== "string") {
+    throw new Error("Invalid /chat/ask response.");
+  }
+  return data;
 }
 
 
