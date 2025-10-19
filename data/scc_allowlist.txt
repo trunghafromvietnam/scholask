@@ -1,0 +1,21 @@
+# Seattle Central College — VERIFY exact paths before crawl
+https://seattlecentral.edu/        # VERIFY
+https://seattlecolleges.edu/       # VERIFY if shared services
+# Admissions
+https://seattlecentral.edu/admissions           # VERIFY
+# International
+https://seattlecentral.edu/international-students    # VERIFY
+# Tuition & Fees
+https://seattlecentral.edu/tuition-and-fees     # VERIFY
+# Registrar
+https://seattlecentral.edu/registrar            # VERIFY
+# Financial Aid
+https://seattlecentral.edu/financial-aid        # VERIFY
+# Advising / Placement
+https://seattlecentral.edu/advising             # VERIFY
+# Academic Calendar (ICS)
+# ICS: VERIFY and put final .ics URL here
+# Campus services
+https://seattlecentral.edu/campus-life          # VERIFY
+# PDFs (catalog/handbook) — direct links
+# https://.../catalog.pdf   # VERIFY

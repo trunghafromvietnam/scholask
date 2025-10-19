@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sidebar-w: 260px; /* default sidebar width */
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased; /* Smoother fonts */
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  @apply text-slate-800; /* Default text color */
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.2); /* Tailwind blue-500 equivalent with alpha */
+}
+
+/* Glass effect utility */
+.glass {
+  @apply bg-white/80 backdrop-blur-sm border border-slate-200/80; /* Slightly adjusted border */
+}
+
+.msg {
+}
+
+.msg-user {
+}
+
+/* Specific styles for AI messages (Used if needed) */
+.msg-ai {
+ /* @apply bg-white border border-slate-200 rounded-tl-none text-slate-900; */
+}
+
+/* Animated gradient mesh for backgrounds (like landing page) */
+.mesh {
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(99,102,241,.1), transparent 60%), /* Less intense */
+    radial-gradient(900px 500px at 90% 20%, rgba(59,130,246,.1), transparent 60%),  /* Less intense */
+    radial-gradient(1000px 600px at 30% 90%, rgba(16,185,129,.1), transparent 60%); /* Less intense */
+  animation: meshShift 20s ease-in-out infinite alternate; /* Slower animation */
+}
+@keyframes meshShift {
+  0%   { background-position: 10% 10%, 90% 20%, 30% 90%; }
+  100% { background-position: 12% 8%, 88% 18%, 28% 88%; }
+}
+
+/* Soft floating animation utility */
+.float-slow {
+  animation: float 12s ease-in-out infinite; /* Slower animation */
+}
+@keyframes float {
+  0% { transform: translateY(0px) rotate(-1deg); } /* Added slight rotate */
+  50% { transform: translateY(-8px) rotate(1deg); }
+  100% { transform: translateY(0px) rotate(-1deg); }
+}
+
+/* Soft shadow utility */
+.shadow-soft {
+  box-shadow: 0 8px 25px -8px rgba(0, 0, 0, 0.1), 0 4px 10px -6px rgba(0, 0, 0, 0.08); /* Smoother shadow */
+}
+
+/* Custom scrollbar styling (Optional, Webkit only) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent; /* Or bg-slate-100 */
+}
+::-webkit-scrollbar-thumb {
+  background: theme('colors.slate.300');
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.slate.400');
+}
+
+/* Prose overrides for Markdown rendering in Chat */
+.prose {
+   /* Ensure prose doesn't override chat text color */
+  color: inherit; 
+}
+.prose code::before, .prose code::after {
+   content: none; /* Remove backticks from inline code */
+}
+.prose pre {
+   @apply bg-slate-100 text-slate-800 rounded-md p-3 text-xs; /* Code block styling */
+}

@@ -1,0 +1,84 @@
+# ==================================
+# === Python / Backend
+# ==================================
+
+# Virtual Environment
+# Tuyệt đối không commit thư mục venv
+venv/
+.venv/
+env/
+*.env
+
+# Secrets (Rất quan trọng!)
+# KHÔNG BAO GIỜ commit file .env chứa API keys
+.env
+.env.*
+!.env.example
+
+# Database
+# Không commit file database SQLite local
+*.db
+*.sqlite
+*.sqlite3
+local.db
+
+# RAG Indexes (File nhị phân/JSON lớn)
+# Không commit dữ liệu đã được ingest
+indexes/
+/indexes/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE / OS specific (Python)
+.idea/
+.vscode/
+*.swp
+
+
+# ==================================
+# === Node.js / Frontend
+# ==================================
+
+# Dependencies
+# Tuyệt đối không commit thư mục node_modules
+node_modules/
+/frontend/node_modules/
+
+# Secrets (Rất quan trọng!)
+# KHÔNG BAO GIỜ commit file .env.local
+.env.local
+.env.*.local
+!.env.local.example
+.env.development
+.env.production
+
+# Build output
+.next/
+/frontend/.next/
+out/
+build/
+dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Other
+coverage/
+.pnp.*
+
+
+# ==================================
+# === OS / General
+# ==================================
+.DS_Store
+.DS_Store?
+Thumbs.db
+._*
+.Spotlight-V100
+.Trashes
