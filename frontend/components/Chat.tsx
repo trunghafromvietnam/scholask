@@ -1,11 +1,13 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ask } from '@/lib/api';
+const CHAT_PATH = process.env.NEXT_PUBLIC_CHAT_PATH || "/chat";
+const EDGE_URL  = process.env.NEXT_PUBLIC_EDGE_URL;
 import { ArrowUp, Copy, RotateCcw, Bot, Check } from 'lucide-react';
 import { TypeAnimation } from 'react-type-animation';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useConnectivity } from "@/lib/net";
 
 type MessageSource = { i: number; text?: string; url?: string };
 type Message = { id: string; role: 'user' | 'assistant'; content: string; sources?: MessageSource[] };
@@ -15,6 +17,14 @@ export default function Chat({ school }: { school: string }) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const {
+    status, baseUrl, canSend,
+    enqueue, readQueue, clearQueue, setQueueKey
+  } = useConnectivity();
+  useEffect(() => {
+    // mỗi school có 1 kho hàng đợi riêng
+    setQueueKey(`chat-queue-${school}`);
+  }, [school, setQueueKey]);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -40,41 +50,119 @@ export default function Chat({ school }: { school: string }) {
   const handleSend = useCallback(async (questionToSend: string) => {
     const userMessage = questionToSend.trim();
     if (!userMessage || isLoading) return;
-
+  
     setError(null);
+  
+    // append bubble user
     const newMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: userMessage };
     setMessages(prev => [...prev, newMessage]);
     setInput('');
     setIsLoading(true);
-
     if (inputRef.current) inputRef.current.style.height = 'auto';
-
+  
+    // post helper
+    const postChat = async (url: string, body: any) => {
+      const res = await fetch(`${url}${CHAT_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    };
+  
+    // payload chuẩn hoá (backend nhận {school, text})
+    const payload = { school, text: userMessage };
+  
+    // OFFLINE -> xếp hàng + thông báo
+    if (!canSend || !baseUrl) {
+      enqueue(school, payload);
+      setMessages(prev => [
+        ...prev,
+        { id: `sys-${Date.now()}`, role: 'assistant', content: "_No network. Your message is queued and will be sent automatically when back online._" }
+      ]);
+      setIsLoading(false);
+      return;
+    }
+  
     try {
-      const response = await ask(school, userMessage);
-      
-      if (!response || typeof response.answer !== 'string') {
-        throw new Error("Invalid response received from the server.");
+      // Online: gọi endpoint đang active (cloud/edge tuỳ hook)
+      const data = await postChat(baseUrl, payload);
+      const answer = data.reply ?? data.answer ?? "";
+      const sources = data.sources ?? data.docs ?? [];
+      if (!answer) throw new Error("Invalid response");
+  
+      setMessages(prev => [
+        ...prev,
+        { id: `assistant-${Date.now()}`, role: 'assistant', content: answer, sources }
+      ]);
+    } catch (errFirst) {
+      // Fallback sang EDGE nếu hiện tại baseUrl không phải EDGE và có cấu hình EDGE_URL
+      try {
+        if (EDGE_URL && baseUrl !== EDGE_URL) {
+          const data2 = await postChat(EDGE_URL, payload);
+          const answer2 = data2.reply ?? data2.answer ?? "";
+          const sources2 = data2.sources ?? data2.docs ?? [];
+          if (!answer2) throw new Error("Invalid response (edge)");
+          setMessages(prev => [
+            ...prev,
+            { id: `assistant-${Date.now()}`, role: 'assistant', content: answer2, sources: sources2 }
+          ]);
+        } else {
+          throw errFirst;
+        }
+      } catch (errFinal) {
+        // Cuối cùng: xếp hàng
+        enqueue(school, payload);
+        setMessages(prev => [
+          ...prev,
+          { id: `sys-${Date.now()}`, role: 'assistant', content: "_Connection issue. Your message has been queued and will be sent automatically when online._" }
+        ]);
       }
-      
-      if (response.answer.includes("Sorry, I'm having trouble") || response.answer.includes("Failed to process")) {
-        setError(response.answer);
-      }
-
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: response.answer,
-        sources: response.sources
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-
-    } catch (apiError: any) {
-      console.error("Chat API Call Error:", apiError);
-      setError("Failed to get response. Please check your connection and try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [school, isLoading]);
+  }, [school, isLoading, canSend, baseUrl, enqueue]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!canSend || !baseUrl) return;
+  
+      // helper local
+      const postChat = async (url: string, body: any) => {
+        const res = await fetch(`${url}${CHAT_PATH}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      };
+  
+      const q = readQueue(school);
+      if (!q.length) return;
+  
+      for (const item of q) {
+        try {
+          const data = await postChat(baseUrl, item.msg);
+          const answer = data.reply ?? data.answer ?? "";
+          const sources = data.sources ?? data.docs ?? [];
+          if (answer) {
+            setMessages(prev => [
+              ...prev,
+              { id: `assistant-${Date.now()}`, role: 'assistant', content: answer, sources }
+            ]);
+          }
+        } catch {
+          // stop sớm – sẽ thử lại khi mạng đổi/health OK lần sau
+          return;
+        }
+      }
+      clearQueue(school);
+    };
+  
+    run();
+  }, [canSend, baseUrl, school, readQueue, clearQueue]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();

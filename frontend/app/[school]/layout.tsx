@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense, ReactNode } from "react";
 import CollapsibleSidebar from "@/components/CollapsibleSidebar";
 import StudentSidebar from "@/components/StudentSideBar"; 
 import StudentAuthModal from "@/components/StudentAuthModal";
+import NetBadge from "@/components/NetBadge";
 import { getAuth, AUTH_EVENT } from "@/lib/auth";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
@@ -106,6 +107,7 @@ function StudentLayoutContent({ params, children }: { params: { school: string }
         {/* Header Bar */}
         <header className="h-14 border-b border-slate-200/80 bg-white/60 backdrop-blur sticky top-0 z-30 flex items-center px-4 justify-between">
           <div className="text-sm font-semibold text-slate-800">{school.toUpperCase().replace(/-/g, ' ')}</div>
+          <NetBadge />
           {isAdmin && (
             <a href={`/admin/${school}`} className="...">Admin Console</a>
           )}
