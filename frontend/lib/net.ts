@@ -1,105 +1,118 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const CLOUD_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-const EDGE_URL  = process.env.NEXT_PUBLIC_EDGE_URL || "";          
-const PING_PATH = process.env.NEXT_PUBLIC_PING_PATH || "/health";
-const INTERVAL  = Number(process.env.NEXT_PUBLIC_NET_HEALTH_INTERVAL_MS || 4000);
-const TIMEOUT_MS = 1800;
+type Status = "online" | "edge" | "offline" | "blocked";
 
-async function ping(url: string) {
-  if (!url) return { ok: false, ms: null as number | null };
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const start = performance.now();
+const CLOUD_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+const EDGE_URL  = process.env.NEXT_PUBLIC_EDGE_URL || "";
+
+function isHttpsPage(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.protocol === "https:";
+}
+
+async function ping(url: string, signal: AbortSignal): Promise<boolean> {
   try {
-    const res = await fetch(`${url}${PING_PATH}`, { method: "GET", signal: controller.signal, cache: "no-store" });
-    const ok = res.ok;
-    const ms = Math.round(performance.now() - start);
-    return { ok, ms };
+    const r = await fetch(`${url.replace(/\/$/, "")}/health`, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+      signal,
+    });
+    if (!r.ok) return false;
+    const j = await r.json().catch(() => ({}));
+    return typeof j === "object" && j && j.ok === true;
   } catch {
-    return { ok: false, ms: null };
-  } finally {
-    clearTimeout(id);
+    return false;
   }
 }
 
-type NetStatus = "cloud" | "edge" | "offline";
-
 export function useConnectivity() {
-  const [navOnline, setNavOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
-  const [cloud, setCloud] = useState<{ok:boolean; ms:number|null}>({ok:false, ms:null});
-  const [edge,  setEdge]  = useState<{ok:boolean; ms:number|null}>({ok:false,  ms:null});
-  const [lastChange, setLastChange] = useState<number>(Date.now());
+  const [status, setStatus] = useState<Status>("offline");
+  const [baseUrl, setBaseUrl] = useState<string>(CLOUD_URL);
+  const [reason, setReason] = useState<string | undefined>();
+  const [queueKey, setQueueKey] = useState<string>("chat:default");
 
-  // queue cho chat khi offline
-  const queueKeyRef = useRef<string>(""); // set sau khi biết school (tùy component)
-  const setQueueKey = (key: string) => { queueKeyRef.current = key; };
+  const edgeBlocked = useMemo(
+    () => isHttpsPage() && EDGE_URL.startsWith("http://") && EDGE_URL !== "",
+    []
+  );
 
-  // ping định kỳ
-  useEffect(() => {
-    let mounted = true;
+  const cloudUrl = CLOUD_URL;
+  const edgeUrl = EDGE_URL;
 
-    const tick = async () => {
-      setNavOnline(typeof navigator !== "undefined" ? navigator.onLine : true);
-      const [c, e] = await Promise.all([ ping(CLOUD_URL), ping(EDGE_URL) ]);
-      if (!mounted) return;
-      setCloud(prev => { if (prev.ok !== c.ok) setLastChange(Date.now()); return c; });
-      setEdge(prev  => { if (prev.ok !== e.ok) setLastChange(Date.now()); return e; });
-    };
-
-    tick(); // run ngay
-    const id = setInterval(tick, INTERVAL);
-
-    const handle = () => { setNavOnline(navigator.onLine); setLastChange(Date.now()); };
-    window.addEventListener("online", handle);
-    window.addEventListener("offline", handle);
-
-    return () => {
-      mounted = false;
-      clearInterval(id);
-      window.removeEventListener("online", handle);
-      window.removeEventListener("offline", handle);
-    };
-  }, []);
-
-  // chọn mode & baseUrl
-  const status: NetStatus = useMemo(() => {
-    if (!navOnline) return "offline";
-    if (cloud.ok)   return "cloud";
-    if (edge.ok)    return "edge";
-    return "offline";
-  }, [navOnline, cloud.ok, edge.ok]);
-
-  const baseUrl = status === "cloud" ? CLOUD_URL : status === "edge" ? EDGE_URL : "";
-  const canSend = status !== "offline" && !!baseUrl;
-
-  // API: thêm/đọc/flush queue (để Chat dùng)
-  const enqueue = (school: string, msg: any) => {
-    const key = queueKeyRef.current || `chat-queue-${school}`;
+  // simple queue API (localStorage)
+  function enqueue(text: string) {
+    const key = `scholask:q:${queueKey}`;
     const arr = JSON.parse(localStorage.getItem(key) || "[]");
-    arr.push({ id: Date.now(), msg });
+    arr.push(text);
     localStorage.setItem(key, JSON.stringify(arr));
-  };
-  const readQueue = (school: string) => {
-    const key = queueKeyRef.current || `chat-queue-${school}`;
-    return JSON.parse(localStorage.getItem(key) || "[]") as {id:number; msg:any}[];
-  };
-  const clearQueue = (school: string) => {
-    const key = queueKeyRef.current || `chat-queue-${school}`;
+  }
+  function readQueue(): string[] {
+    const key = `scholask:q:${queueKey}`;
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  }
+  function clearQueue() {
+    const key = `scholask:q:${queueKey}`;
     localStorage.removeItem(key);
-  };
+  }
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+
+    async function poll() {
+      setReason(undefined);
+
+      // 1) Cloud first
+      const cloudOK = cloudUrl ? await ping(cloudUrl, ctrl.signal) : false;
+      if (cloudOK) {
+        setStatus("online");
+        setBaseUrl(cloudUrl);
+        return;
+      }
+
+      // 2) Edge when allowed
+      if (edgeBlocked) {
+        setStatus("blocked");
+        setBaseUrl(cloudUrl || edgeUrl || "");
+        setReason("Mixed content blocked: EDGE_URL is http:// on an https page.");
+        return;
+      }
+      const edgeOK = edgeUrl ? await ping(edgeUrl, ctrl.signal) : false;
+      if (edgeOK) {
+        setStatus("edge");
+        setBaseUrl(edgeUrl);
+        return;
+      }
+
+      // 3) Offline
+      setStatus("offline");
+      setBaseUrl(cloudUrl || edgeUrl || "");
+    }
+
+    // first run + interval
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => {
+      ctrl.abort();
+      clearInterval(id);
+    };
+  }, [cloudUrl, edgeUrl, edgeBlocked]);
+
+  const canSend = status === "online" || status === "edge";
 
   return {
-    status,            // 'cloud' | 'edge' | 'offline'
-    baseUrl,           // endpoint hiện tại
-    canSend,           // có thể gọi API ngay không
-    cloudMs: cloud.ms,
-    edgeMs:  edge.ms,
-    lastChange,
+    status,
+    baseUrl,
+    cloudUrl,
+    edgeUrl,
+    canSend,
+    reason,
     // queue helpers
+    enqueue,
+    readQueue,
+    clearQueue,
     setQueueKey,
-    enqueue, readQueue, clearQueue,
   };
 }
+

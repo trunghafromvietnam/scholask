@@ -1,6 +1,10 @@
 import { authHeaders } from "./auth";
 
-const baseURL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const DEFAULT_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+function pickBase(opts?: { baseUrl?: string }) {
+  return (opts?.baseUrl && opts.baseUrl.length > 0) ? opts.baseUrl : DEFAULT_BASE;
+}
 
 export type SubmitFormResponse = {
   id: number;
@@ -23,7 +27,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   }
 
   try {
-    const response = await fetch(`${baseURL}${endpoint}`, {
+    const response = await fetch(`${DEFAULT_BASE}${endpoint}`, {
       ...options,
       headers,
     });
@@ -68,7 +72,7 @@ export async function submitForm(
   formName: string,
   payload: any
 ): Promise<SubmitFormResponse> {
-  const url = `${baseURL}/forms/submit`;
+  const url = `${DEFAULT_BASE}/forms/submit`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -159,23 +163,17 @@ export async function submitForm(
 export async function ask(
   school: string,
   question: string,
-  opts: { baseUrl?: string } = {}
+  baseUrlOverride?: string
 ) {
-  const base = opts.baseUrl || process.env.NEXT_PUBLIC_BACKEND_URL!;
-  const res = await fetch(`${base}/chat/ask`, {
+  const BASE = (baseUrlOverride || process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
+  const r = await fetch(`${BASE}/chat/ask?school=${encodeURIComponent(school)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ school, question }),
+    credentials: "include",
+    body: JSON.stringify({ question }),
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`ask() failed: ${res.status} ${t}`);
-  }
-  const data = await res.json();
-  if (!data || typeof data.answer !== "string") {
-    throw new Error("Invalid /chat/ask response.");
-  }
-  return data;
+  if (!r.ok) throw new Error(`Chat failed (${r.status})`);
+  return r.json();
 }
 
 
@@ -269,7 +267,7 @@ export async function listDocuments(schoolSlug: string): Promise<any[]> {
 export async function deleteDocument(docId: number): Promise<void> {
   try {
     console.log(`Attempting to delete document ${docId} via API...`); 
-    const response = await fetch(`${baseURL}/admin/documents/${docId}`, {
+    const response = await fetch(`${DEFAULT_BASE}/admin/documents/${docId}`, {
       method: 'DELETE',
       headers: authHeaders(), // Gửi token xác thực
     });
@@ -311,7 +309,7 @@ export async function ingestDocument(formData: FormData): Promise<any> {
    const headers = authHeaders(); // Lấy auth header
 
    try {
-     const response = await fetch(`${baseURL}/admin/documents/ingest`, {
+     const response = await fetch(`${DEFAULT_BASE}/admin/documents/ingest`, {
         method: "POST",
         headers: headers, // Chỉ cần auth header, không cần Content-Type
         body: formData,
