@@ -7,7 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useConnectivity } from "@/lib/net";
 import { ask } from "@/lib/api";
-
+const CHAT_PATH = "/chat/ask";
 type MessageSource = { i: number; text?: string; url?: string };
 type Message = { id: string; role: 'user' | 'assistant'; content: string; sources?: MessageSource[] };
 
@@ -50,23 +50,29 @@ export default function Chat({ school }: { school: string }) {
     setMessages(prev => [...prev, newMessage]);
     setInput('');
 
+    // OFFLINE -> đưa câu hỏi vào hàng đợi (chuỗi đơn giản) + hiển thị bubble “Queued”
     if (!canSend) {
-      enqueue(userMessage); // chỉ enqueue string
+      enqueue(userMessage); // <-- giữ dạng string để flush về sau
       const info = {
         id: `assistant-${Date.now()}`,
         role: 'assistant' as const,
         content: "_(Queued. Will send when connection is back.)_",
       };
       setMessages(prev => [...prev, info]);
-      return; // không set isLoading
+      return;
     }
 
+    // ONLINE -> gọi API chuẩn
     setIsLoading(true);
     try {
-      const response = await ask(school, userMessage, baseUrl);
+      // CHỈ TRUYỀN 2 THAM SỐ. KHÔNG truyền baseUrl ở tham số thứ 3 (đó là lỗi 422 trước đây)
+      const response = await ask(school, userMessage);
       if (!response || typeof response.answer !== 'string') throw new Error("Invalid response.");
 
-      if (response.answer.includes("Sorry, I'm having trouble") || response.answer.includes("Failed to process")) {
+      if (
+        response.answer.includes("Sorry, I'm having trouble") ||
+        response.answer.includes("Failed to process")
+      ) {
         setError(response.answer);
       }
 
@@ -77,26 +83,30 @@ export default function Chat({ school }: { school: string }) {
         sources: response.sources
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (e:any) {
+
+    } catch (e: any) {
       console.error("Chat API Error:", e);
       setError("Failed to get response. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [school, isLoading, canSend, baseUrl, enqueue]);
+  }, [school, isLoading, canSend, enqueue]);
 
   useEffect(() => {
     async function flush() {
-      if (!canSend || !baseUrl) return;
+      if (!canSend) return;
 
-      const qs = readQueue();  // đọc toàn bộ queue (mình đã setQueueKey theo school ở effect trên)
+      // đọc queue hiện tại theo key đã set (setQueueKey đã làm ở trên)
+      const qs = readQueue();
       if (!qs.length) return;
 
-      clearQueue(); // xoá queue trước để tránh vòng lặp vô tận
+      let allOk = true;
+
       for (const q of qs) {
         try {
-          const response = await ask(school, q, baseUrl);
-          const answer = response?.answer ?? "";
+          //CHỈ TRUYỀN 2 THAM SỐ cho ask
+          const response = await ask(school, q);
+          const answer  = response?.answer ?? "";
           const sources = response?.sources ?? [];
           if (answer) {
             setMessages(prev => [
@@ -106,14 +116,17 @@ export default function Chat({ school }: { school: string }) {
           }
         } catch (e) {
           console.error("Flush failed:", e);
-          // Nếu call lỗi giữa chừng, re-queue lại câu chưa gửi và dừng. Lần poll sau sẽ thử lại.
-          enqueue(q);
-          break;
+          allOk = false;
+          break; // dừng lại, để queue nguyên vẹn -> lần sau online sẽ thử lại
         }
       }
+
+      // chỉ clear khi tất cả câu trong queue đều gửi OK
+      if (allOk) clearQueue();
     }
+
     flush();
-  }, [canSend, baseUrl, school, readQueue, clearQueue, enqueue]);
+  }, [canSend, school, readQueue, clearQueue]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
