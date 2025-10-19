@@ -1,6 +1,7 @@
 import { authHeaders } from "./auth";
 
 const DEFAULT_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 function pickBase(opts?: { baseUrl?: string }) {
   return (opts?.baseUrl && opts.baseUrl.length > 0) ? opts.baseUrl : DEFAULT_BASE;
@@ -160,20 +161,19 @@ export async function submitForm(
 /**
  * Sends a question to the RAG backend (/chat/ask).
  */
-export async function ask(
-  school: string,
-  question: string,
-  baseUrlOverride?: string
-) {
-  const BASE = (baseUrlOverride || process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
-  const r = await fetch(`${BASE}/chat/ask?school=${encodeURIComponent(school)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ question }),
+export async function ask(school: string, question: string) {
+  const res = await fetch(`${API_BASE}/chat/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // Pydantic AskIn expects: { school, question }
+    body: JSON.stringify({ school, question }),
+    credentials: 'include', // nếu bạn dùng cookie auth
   });
-  if (!r.ok) throw new Error(`Chat failed (${r.status})`);
-  return r.json();
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`Chat failed (${res.status}) ${t}`);
+  }
+  return res.json(); // { answer: string, sources?: [...] }
 }
 
 
