@@ -33,4 +33,8 @@ app.include_router(tickets_router)
 app.include_router(schools.router)
 app.include_router(dev.router)
 
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
 
